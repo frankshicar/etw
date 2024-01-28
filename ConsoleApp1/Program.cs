@@ -1,18 +1,22 @@
-﻿using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
+﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
-
+using System.Xml.Linq;
 namespace ConsoleApp1
 {
     class Program
     {
+        static FileSystemWatcher watcher;
+        static TraceEventSession traceEventSession;
+        static HashSet<string> monitoredProcesses;
+
         static void Main(string[] args)
         {
             if (!(TraceEventSession.IsElevated() ?? false))
@@ -21,59 +25,159 @@ namespace ConsoleApp1
                 return;
             }
 
-            // 初始化 FileSystemWatcher
-            InitializeFileSystemWatcher();
+            // 讀取 XML 配置文件
+            //var config = XDocument.Load("etwrole.xml");
+            var config = XDocument.Load(@"C:\Users\User\Desktop\etw test\etw\ConsoleApp1\bin\Debug\etwrole.xml");
+            var watcherConfig = config.Element("Configuration").Element("FileSystemWatcherConfig");
+            var processMonitorConfig = config.Element("Configuration").Element("ProcessMonitorConfig");
 
-            // 設置 ETW 來監控進程事件
-            using (var kernalSession = new TraceEventSession(KernelTraceEventParser.KernelSessionName))
+            monitoredProcesses = new HashSet<string>();
+
+            if (processMonitorConfig != null)
             {
-                Console.CancelKeyPress += delegate (object sender, ConsoleCancelEventArgs e) { kernalSession.Dispose(); };
-
-                kernalSession.EnableKernelProvider(KernelTraceEventParser.Keywords.ImageLoad | KernelTraceEventParser.Keywords.Process);
-
-                kernalSession.Source.Kernel.ImageLoad += dllLoaded;
-                kernalSession.Source.Kernel.ProcessStart += processStarted;
-                kernalSession.Source.Kernel.ProcessStop += processStopped;
-
-                kernalSession.Source.Process();
+                foreach (var name in processMonitorConfig.Elements("Name"))
+                {
+                    monitoredProcesses.Add(name.Value);
+                    Console.WriteLine("Added to monitoring: " + name.Value);
+                }
             }
+
+
+
+            // 初始化 ETW
+            InitializeETW();
+
+            // 使用配置文件初始化 FileSystemWatcher
+            InitializeFileSystemWatcher(
+                watcherConfig.Element("Path").Value,
+                watcherConfig.Element("Filter").Value,
+                watcherConfig.Element("NotifyFilter").Value
+            );
+
+            Console.WriteLine("Monitoring started. Press 'Enter' to quit.");
+            Console.ReadLine();
+
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+            traceEventSession.Dispose();
+
         }
 
-        private static void InitializeFileSystemWatcher()
+
+        private static void InitializeETW()
         {
-            using (FileSystemWatcher watcher = new FileSystemWatcher())
+            traceEventSession = new TraceEventSession("MyETWSession");
+            traceEventSession.EnableKernelProvider(
+                KernelTraceEventParser.Keywords.Process |
+                KernelTraceEventParser.Keywords.ImageLoad);
+            traceEventSession.EnableProvider("Microsoft-Windows-TCPIP", TraceEventLevel.Informational);
+            traceEventSession.Source.Kernel.ProcessStart += data =>
             {
-                watcher.Path = @"C:\Users"; // 指定要監測的目錄路徑
-                watcher.Filter = "*.*"; // 監測的檔案類型
-                watcher.NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+                if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
+                {
+                    OnProcessStarted(data);
+                }
+            };
+            traceEventSession.Source.Kernel.ProcessStop += data =>
+            {
+                if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
+                {
+                    OnProcessStopped(data);
+                }
+            };
+            //traceEventSession.Source.Kernel.ImageLoad += data =>
+            //{
+            //    if (monitoredProcesses.Contains(data.ProcessName.ToLower()))
+            //    {
+            //        OnImageLoaded(data);
+            //    }
+            //};
+            traceEventSession.Source.Dynamic.All += data =>
+            {
+                if (data.ProviderName == "Microsoft-Windows-TCPIP")
+                {
+                    // Handle network event (for example, print some information)
+                    Console.WriteLine($"[NetworkEvent] {data.EventName} at {data.TimeStamp}");
+                }
+            };
 
-                // 註冊事件處理器
-                watcher.Changed += OnChanged;
-                watcher.Created += OnCreated;
-                watcher.Deleted += OnDeleted;
-                watcher.Renamed += OnRenamed;
-                watcher.Error += OnError;
-
-                // 開始監測
-                watcher.EnableRaisingEvents = true;
-
-                Console.WriteLine("FileSystemWatcher is running. Press 'q' to quit.");
-            }
+            var etwThread = new Thread(() => traceEventSession.Source.Process());
+            etwThread.Start();
         }
 
-        // FileSystemWatcher 的事件處理方法
-        private static void OnChanged(object source, FileSystemEventArgs e) => Console.WriteLine($"File changed: {e.FullPath}");
-        private static void OnCreated(object source, FileSystemEventArgs e) => Console.WriteLine($"File created: {e.FullPath}");
-        private static void OnDeleted(object source, FileSystemEventArgs e) => Console.WriteLine($"File deleted: {e.FullPath}");
-        private static void OnRenamed(object source, RenamedEventArgs e) => Console.WriteLine($"File renamed from {e.OldFullPath} to {e.FullPath}");
-        private static void OnError(object source, ErrorEventArgs e) => Console.WriteLine($"FileSystemWatcher error.");
 
-        // ETW 的事件處理方法
-        private static void dllLoaded(ImageLoadTraceData data) => Console.WriteLine("DLL loaded: {0}, by process: {1} with pid: {2}", data.FileName, data.ProcessName, data.ProcessID);
-        private static void processStarted(ProcessTraceData data) => Console.WriteLine("Process started: {0}, PID: {1}", data.ProcessName, data.ProcessID);
-        private static void processStopped(ProcessTraceData data) => Console.WriteLine("Process stopped: {0}, PID: {1}", data.ProcessName, data.ProcessID);
+        static void InitializeFileSystemWatcher(string path, string filter, string notifyFilter)
+        {
+            watcher = new FileSystemWatcher
+            {
+                Path = path,
+                Filter = filter,
+                NotifyFilter = ParseNotifyFilters(notifyFilter)
+            };
+
+            watcher.Changed += OnChanged;
+            watcher.Created += OnCreated;
+            watcher.Deleted += OnDeleted;
+            watcher.Renamed += OnRenamed;
+            watcher.Error += OnError;
+
+            watcher.EnableRaisingEvents = true;
+        }
+
+        static NotifyFilters ParseNotifyFilters(string notifyFilter)
+        {
+            NotifyFilters filters = NotifyFilters.LastAccess;
+            string[] tokens = notifyFilter.Split(',');
+            foreach (var token in tokens)
+            {
+                if (Enum.TryParse(token.Trim(), out NotifyFilters result))
+                {
+                    filters |= result;
+                }
+            }
+            return filters;
+        }
+
+
+        private static void OnProcessStarted(ProcessTraceData data)
+        {
+            Console.WriteLine($"[ProcessStart] {data.ProcessName} (PID: {data.ProcessID}) started. Provider: {data.ProviderName}, Event: ProcessStart, Command Line: {data.CommandLine}\n");
+        }
+
+        private static void OnProcessStopped(ProcessTraceData data)
+        {
+
+            Console.WriteLine($"[ProcessStop] {data.ProcessName} (PID: {data.ProcessID}) stopped. Provider: {data.ProviderName}, Event: ProcessStop, Command Line: {data.CommandLine}\n");
+
+        }
+
+
+        //private static void OnImageLoaded(ImageLoadTraceData data)
+        //{
+        //    Console.WriteLine($"[ImageLoad] {data.FileName} loaded by {data.ProcessName} with PID {data.ProcessID}Provider: {data.ProviderName}, Event: ImageLoad");
+        //}
+        private static void OnChanged(object source, FileSystemEventArgs e)
+        {
+            Console.WriteLine($"[FileChanged] {e.FullPath}");
+        }
+
+        private static void OnCreated(object source, FileSystemEventArgs e)
+        {
+            Console.WriteLine($"[FileCreated] {e.FullPath}");
+        }
+
+        private static void OnDeleted(object source, FileSystemEventArgs e)
+        {
+            Console.WriteLine($"[FileDeleted] {e.FullPath}");
+        }
+
+        private static void OnRenamed(object source, RenamedEventArgs e)
+        {
+            Console.WriteLine($"[FileRenamed] from {e.OldFullPath} to {e.FullPath}");
+        }
+        private static void OnError(object source, ErrorEventArgs e)
+        {
+            Console.WriteLine($"[WatcherError] {e.GetException().Message}");
+        }
     }
 }
-
-
-
