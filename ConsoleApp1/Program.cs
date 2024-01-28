@@ -92,12 +92,25 @@ namespace ConsoleApp1
             //        OnImageLoaded(data);
             //    }
             //};
+
+            // 處理網絡事件
             traceEventSession.Source.Dynamic.All += data =>
             {
                 if (data.ProviderName == "Microsoft-Windows-TCPIP")
                 {
-                    // Handle network event (for example, print some information)
-                    Console.WriteLine($"[NetworkEvent] {data.EventName} at {data.TimeStamp}");
+                    if (data.EventName == "TcpConnectTcbComplete")
+                    {
+                        Console.WriteLine($"[TcpConnectTcbCompleteEvent] at {data.TimeStamp}");
+                        foreach (var payloadName in data.PayloadNames)
+                        {
+                            var payloadValue = data.PayloadByName(payloadName);
+                            if (payloadName == "LocalAddress" || payloadName == "RemoteAddress")
+                            {
+                                payloadValue = BytesToIPAddressString(payloadValue as byte[]);
+                            }
+                            Console.WriteLine($"  {payloadName}: {payloadValue}");
+                        }
+                    }
                 }
             };
 
@@ -105,6 +118,14 @@ namespace ConsoleApp1
             etwThread.Start();
         }
 
+        private static string BytesToIPAddressString(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length != 4 && bytes.Length != 16)
+            {
+                return "Invalid IP Address";
+            }
+            return new IPAddress(bytes).ToString();
+        }
 
         static void InitializeFileSystemWatcher(string path, string filter, string notifyFilter)
         {
