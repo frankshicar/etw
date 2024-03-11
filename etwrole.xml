@@ -11,4 +11,7 @@
 		<Name>notepad.exe</Name>
 		<Name>cmd.exe</Name>
 	</ProcessMonitorConfig>
+	<Blacklists>
+		<IP>192.168.0.115</IP>
+	</Blacklists>
 </Configuration>
