@@ -75,38 +75,6 @@ namespace ConsoleApp1
         }
 
 
-        //static void InitializeETW()
-        //{
-        //    string sessionName = "NetworkMonitoringSession";
-        //    using (var session = new TraceEventSession(sessionName))
-        //    {
-        //        session.EnableProvider("Microsoft-Windows-TCPIP", TraceEventLevel.Informational);
-
-        //        session.Source.Dynamic.All += data =>
-        //        {
-        //            if (data.ProviderName == "Microsoft-Windows-TCPIP")
-        //            {
-        //                var localAddressBytes = data.PayloadByName("LocalAddress") as byte[];
-        //                var remoteAddressBytes = data.PayloadByName("RemoteAddress") as byte[];
-        //                var localPort = data.PayloadByName("LocalPort");
-        //                var remotePort = data.PayloadByName("RemotePort");
-
-        //                var localAddress = localAddressBytes != null ? BytesToIPAddressString(localAddressBytes) : "Unavailable";
-        //                var remoteAddress = remoteAddressBytes != null ? BytesToIPAddressString(remoteAddressBytes) : "Unavailable";
-
-        //                Console.WriteLine($"[NetworkEvent] {data.EventName} at {data.TimeStamp}");
-        //                Console.WriteLine($"  Source IP: {localAddress}, Source Port: {localPort}");
-        //                Console.WriteLine($"  Destination IP: {remoteAddress}, Destination Port: {remotePort}");
-        //            }
-        //        };
-
-        //        Console.WriteLine("Listening for TCP/IP events. Press any key to exit.");
-        //        session.Source.Process();
-        //        Console.ReadKey();
-
-        //        session.Dispose();
-        //    }
-        //}
 
         static void InitializeETW()
         {
