@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Configuration>
     <FileSystemWatcherConfig>
-        <Path>C:\Users\User\Desktop\etw test</Path>
+        <Path>C:\Users\USER\Desktop\suspicious folder</Path>
         <Filter>*.*</Filter>
         <NotifyFilter>FileName,DirectoryName,LastWrite</NotifyFilter>
     </FileSystemWatcherConfig>
@@ -11,4 +11,7 @@
 		<Name>notepad.exe</Name>
 		<Name>cmd.exe</Name>
 	</ProcessMonitorConfig>
+	<Blacklists>
+		<IP>192.168.0.115</IP>
+	</Blacklists>
 </Configuration>
