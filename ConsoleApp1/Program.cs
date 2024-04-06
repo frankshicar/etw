@@ -207,7 +207,7 @@ namespace ConsoleApp1
         //        }
         //    }
         //}
-
+         
 
         ////全印
         //static void InitializeTCPIP()
