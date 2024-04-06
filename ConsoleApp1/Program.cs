@@ -10,6 +10,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Xml.Linq;
 using System.Net;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ConsoleApp1
 {
@@ -30,7 +33,7 @@ namespace ConsoleApp1
 
             // 讀取 XML 配置文件
             //var config = XDocument.Load("etwrole.xml");
-            var config = XDocument.Load(@"C:\Users\User\Desktop\etw test\etw\etwrole.xml");
+            var config = XDocument.Load(@"C:\Users\frank\OneDrive\桌面\etw\etwrole.xml");
             var watcherConfig = config.Element("Configuration").Element("FileSystemWatcherConfig");
             var processMonitorConfig = config.Element("Configuration").Element("ProcessMonitorConfig");
             var blacklistrConfig = config.Element("Configuration").Element("blacklist");
@@ -53,10 +56,12 @@ namespace ConsoleApp1
                 blacklistIPs.Add(ip.Value);
             }
 
+            ExecuteNetshCommand("trace start capture=yes");
+
 
             // 初始化 ETW
             InitializeETW();
-            InitializeTCPIP();
+            //InitializeTCPIP();
 
             // 使用配置文件初始化 FileSystemWatcher
             InitializeFileSystemWatcher(
@@ -71,8 +76,33 @@ namespace ConsoleApp1
             watcher.EnableRaisingEvents = false;
             watcher.Dispose();
             traceEventSession.Dispose();
+            ExecuteNetshCommand("trace stop");
 
         }
+
+        ////測試用
+        //private static void InitializeETW()
+        //{
+        //    traceEventSession = new TraceEventSession("MyETWSession");
+        //    traceEventSession.EnableKernelProvider(
+        //        KernelTraceEventParser.Keywords.Process |
+        //        KernelTraceEventParser.Keywords.ImageLoad);
+        //    traceEventSession.Source.Kernel.ProcessStart += data =>
+        //    {
+        //        OnProcessStarted(data);
+        //    };
+        //    traceEventSession.Source.Kernel.ProcessStop += data =>
+        //    {
+        //        OnProcessStopped(data);
+        //    };
+        //    //traceEventSession.Source.Kernel.ImageLoad += data =>
+        //    //{
+        //    //    OnImageLoaded(data);
+        //    //};
+
+        //    var etwThread = new Thread(() => traceEventSession.Source.Process());
+        //    etwThread.Start();
+        //}
 
 
 
@@ -80,103 +110,264 @@ namespace ConsoleApp1
         {
             traceEventSession = new TraceEventSession("MyETWSession");
             traceEventSession.EnableKernelProvider(
-                KernelTraceEventParser.Keywords.Process |
-                KernelTraceEventParser.Keywords.ImageLoad);
-            traceEventSession.EnableProvider("Microsoft-Windows-TCPIP", TraceEventLevel.Informational);
+                    KernelTraceEventParser.Keywords.Process |
+                    KernelTraceEventParser.Keywords.ImageLoad);
+            traceEventSession.EnableProvider("Microsoft-Windows-TCPIP");
+
             traceEventSession.Source.Kernel.ProcessStart += data =>
             {
-                if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
+                OnProcessStarted(data);
+                if (data.ProcessName.ToLower().Contains("nc"))
                 {
-                    OnProcessStarted(data);
-                }
-            };
-            traceEventSession.Source.Kernel.ProcessStop += data =>
-            {
-                if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
-                {
-                    OnProcessStopped(data);
+                    Console.WriteLine($"NC Process started: {data.ProcessName} (PID: {data.ProcessID})");
+
+                    string filePath = GetProcessFilePath(data.ProcessID);
+                    if (!string.IsNullOrEmpty(filePath))
+                    {
+                        Console.WriteLine($"File Path: {filePath}");
+                        ComputeHashes(filePath);
+                    }
                 }
             };
 
-            //traceEventSession.Source.Dynamic.All += data =>
-            //{
-            //    if (data.ProviderName == "Microsoft-Windows-TCPIP")
-            //    {
-            //        // 这里打印所有 TCP/IP 事件的信息
-            //        Console.WriteLine($"Event Name: {data.EventName}");
-            //        foreach (var payloadName in data.PayloadNames)
-            //        {
-            //            var payloadValue = data.PayloadByName(payloadName);
-            //            if (payloadValue != null)
-            //            {
-            //                // 如果是IPv4地址字段，则进行转换
-            //                if (payloadName == "SourceIPv4Address" || payloadName == "DestIPv4Address" || payloadName == " IPTransportProtocol" || payloadName == "AddressFamily")
-            //                {
-            //                    // 将整数形式的IP地址转换为点分十进制格式
-            //                    payloadValue = ConvertToIPAddressString((int)payloadValue);
-            //                }
-            //                Console.WriteLine($" {payloadName}: {payloadValue}");
-            //            }
-            //        }
-            //    }
-            //};
+            traceEventSession.Source.Kernel.ProcessStop += data =>
+            {
+                OnProcessStopped(data);
+            };
+
+            traceEventSession.Source.Dynamic.All += data =>
+            {
+                if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
+                {
+                    // 这里打印所有 TCP/IP 事件的信息
+                    Console.WriteLine($"Event Name: {data.EventName}");
+                    foreach (var payloadName in data.PayloadNames)
+                    {
+                        var payloadValue = data.PayloadByName(payloadName);
+                        if (payloadValue != null)
+                        {
+                            // 如果是IPv4地址字段，则进行转换
+                            if (payloadName == "SourceIPv4Address" || payloadName == "DestIPv4Address")
+                            {
+                                // 将整数形式的IP地址转换为点分十进制格式
+                                var ipAddressString = ConvertToIPAddressString((int)payloadValue);
+                                Console.WriteLine($" {payloadName}: {ipAddressString}");
+
+                                // 检查是否在黑名单中
+                                if (blacklistIPs.Contains(ipAddressString))
+                                {
+                                    Console.WriteLine($"Detected blacklisted IP address: {ipAddressString}");
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine($" {payloadName}: {payloadValue}");
+                            }
+                        }
+                    }
+                }
+            };
 
             var etwThread = new Thread(() => traceEventSession.Source.Process());
             etwThread.Start();
         }
 
+
+        //private static void ExecuteNetshCommand(string command)
+        //{
+        //    using (var process = new Process())
+        //    {
+        //        process.StartInfo.FileName = "netsh.exe";
+        //        process.StartInfo.Arguments = command;
+        //        process.StartInfo.UseShellExecute = false;
+        //        process.StartInfo.RedirectStandardOutput = true;
+        //        process.StartInfo.RedirectStandardError = true;
+        //        process.StartInfo.CreateNoWindow = true;
+
+        //        var output = new StringBuilder();
+        //        var error = new StringBuilder();
+
+        //        process.OutputDataReceived += (sender, args) => output.AppendLine(args.Data);
+        //        process.ErrorDataReceived += (sender, args) => error.AppendLine(args.Data);
+
+        //        process.Start();
+
+        //        process.BeginOutputReadLine();
+        //        process.BeginErrorReadLine();
+
+        //        process.WaitForExit();
+
+        //        Console.WriteLine("Netsh command output:");
+        //        Console.WriteLine(output.ToString());
+
+        //        if (error.Length != 0)
+        //        {
+        //            Console.WriteLine("Netsh command error output:");
+        //            Console.WriteLine(error.ToString());
+        //        }
+        //    }
+        //}
+
+
         ////全印
-        static void InitializeTCPIP()
+        //static void InitializeTCPIP()
+        //{
+        //    // 创建一个 ETW 会话
+        //    string session = "TcpIpMonitoringSession";
+
+        //    // 监听 Microsoft-Windows-TCPIP 提供者的事件
+        //    session.EnableProvider("Microsoft-Windows-TCPIP");
+
+        //    // 事件处理
+        //    session.Source.Dynamic.All += data =>
+        //    {
+        //        if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
+        //        {
+        //            // 这里打印所有 TCP/IP 事件的信息
+        //            Console.WriteLine($"Event Name: {data.EventName}");
+        //            foreach (var payloadName in data.PayloadNames)
+        //            {
+        //                var payloadValue = data.PayloadByName(payloadName);
+        //                if (payloadValue != null)
+        //                {
+        //                    // 如果是IPv4地址字段，则进行转换
+        //                    if (payloadName == "SourceIPv4Address" || payloadName == "DestIPv4Address")
+        //                    {
+        //                        // 将整数形式的IP地址转换为点分十进制格式
+        //                        var ipAddressString = ConvertToIPAddressString((int)payloadValue);
+        //                        Console.WriteLine($" {payloadName}: {ipAddressString}");
+
+        //                        // 检查是否在黑名单中
+        //                        if (blacklistIPs.Contains(ipAddressString))
+        //                        {
+        //                            Console.WriteLine($"Detected blacklisted IP address: {ipAddressString}");
+        //                        }
+        //                    }
+        //                    else
+        //                    {
+        //                        Console.WriteLine($" {payloadName}: {payloadValue}");
+        //                    }
+        //                }
+        //            }
+        //        }
+
+        //    };
+
+        //    Console.WriteLine("Listening for TCP/IP events. Press any key to exit.");
+        //    session.Source.Process();
+        //    Console.ReadKey();
+
+        //}
+
+
+        static string GetProcessFilePath(int processId)
         {
-            // 指定 ETW 会话的名称
-            string sessionName = "TcpIpMonitoringSession";
-
-            // 创建一个 ETW 会话
-            using (var session = new TraceEventSession(sessionName))
+            try
             {
-                // 监听 Microsoft-Windows-TCPIP 提供者的事件
-                session.EnableProvider("Microsoft-Windows-TCPIP");
-
-                // 事件处理
-                session.Source.Dynamic.All += data =>
-                {
-                    if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
-                    {
-                        // 这里打印所有 TCP/IP 事件的信息
-                        Console.WriteLine($"Event Name: {data.EventName}");
-                        foreach (var payloadName in data.PayloadNames)
-                        {
-                            var payloadValue = data.PayloadByName(payloadName);
-                            if (payloadValue != null)
-                            {
-                                // 如果是IPv4地址字段，则进行转换
-                                if (payloadName == "SourceIPv4Address" || payloadName == "DestIPv4Address")
-                                {
-                                    // 将整数形式的IP地址转换为点分十进制格式
-                                    var ipAddressString = ConvertToIPAddressString((int)payloadValue);
-                                    Console.WriteLine($" {payloadName}: {ipAddressString}");
-
-                                    // 检查是否在黑名单中
-                                    if (blacklistIPs.Contains(ipAddressString))
-                                    {
-                                        Console.WriteLine($"Detected blacklisted IP address: {ipAddressString}");
-                                    }
-                                }
-                                else
-                                {
-                                    Console.WriteLine($" {payloadName}: {payloadValue}");
-                                }
-                            }
-                        }
-                    }
-
-                };
-
-                Console.WriteLine("Listening for TCP/IP events. Press any key to exit.");
-                session.Source.Process();
-                Console.ReadKey();
+                var process = Process.GetProcessById(processId);
+                return process.MainModule.FileName;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting process file path: {ex.Message}");
+                return null;
             }
         }
+
+        static void ComputeHashes(string filePath)
+        {
+            using (var md5 = MD5.Create())
+            using (var sha1 = SHA1.Create())
+            using (var sha256 = SHA256.Create())
+            {
+                var fileContent = File.ReadAllBytes(filePath);
+                var md5Hash = BitConverter.ToString(md5.ComputeHash(fileContent)).Replace("-", "");
+                var sha1Hash = BitConverter.ToString(sha1.ComputeHash(fileContent)).Replace("-", "");
+                var sha256Hash = BitConverter.ToString(sha256.ComputeHash(fileContent)).Replace("-", "");
+
+                Console.WriteLine($"MD5: {md5Hash}");
+                Console.WriteLine($"SHA1: {sha1Hash}");
+                Console.WriteLine($"SHA256: {sha256Hash}");
+            }
+        }
+
+        //static void InitializeETW()
+        //{
+        //    traceEventSession = new TraceEventSession("MyETWSession");
+        //    traceEventSession.EnableKernelProvider(
+        //        KernelTraceEventParser.Keywords.Process |
+        //        KernelTraceEventParser.Keywords.ImageLoad);
+        //    traceEventSession.Source.Kernel.ProcessStart += data =>
+        //    {
+        //        if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
+        //        {
+        //            OnProcessStarted(data);
+        //        }
+        //    };
+        //    traceEventSession.Source.Kernel.ProcessStop += data =>
+        //    {
+        //        if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
+        //        {
+        //            OnProcessStopped(data);
+        //        }
+        //    };
+
+        //    var etwThread = new Thread(() => traceEventSession.Source.Process());
+        //    etwThread.Start();
+        //}
+
+        ////全印
+        //static void InitializeTCPIP()
+        //{
+        //     指定 ETW 会话的名称
+        //    string sessionName = "TcpIpMonitoringSession";
+
+        //     创建一个 ETW 会话
+        //    using (var session = new TraceEventSession(sessionName))
+        //    {
+        //         监听 Microsoft-Windows-TCPIP 提供者的事件
+        //        session.EnableProvider("Microsoft-Windows-TCPIP");
+
+        //         事件处理
+        //        session.Source.Dynamic.All += data =>
+        //        {
+        //            if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
+        //            {
+        //                 这里打印所有 TCP/IP 事件的信息
+        //                Console.WriteLine($"Event Name: {data.EventName}");
+        //                foreach (var payloadName in data.PayloadNames)
+        //                {
+        //                    var payloadValue = data.PayloadByName(payloadName);
+        //                    if (payloadValue != null)
+        //                    {
+        //                         如果是IPv4地址字段，则进行转换
+        //                        if (payloadName == "SourceIPv4Address" || payloadName == "DestIPv4Address")
+        //                        {
+        //                             将整数形式的IP地址转换为点分十进制格式
+        //                            var ipAddressString = ConvertToIPAddressString((int)payloadValue);
+        //                            Console.WriteLine($" {payloadName}: {ipAddressString}");
+
+        //                             检查是否在黑名单中
+        //                            if (blacklistIPs.Contains(ipAddressString))
+        //                            {
+        //                                Console.WriteLine($"Detected blacklisted IP address: {ipAddressString}");
+        //                            }
+        //                        }
+        //                        else
+        //                        {
+        //                            Console.WriteLine($" {payloadName}: {payloadValue}");
+        //                        }
+        //                    }
+        //                }
+        //            }
+
+        //        };
+
+        //        Console.WriteLine("Listening for TCP/IP events. Press any key to exit.");
+        //        session.Source.Process();
+        //        Console.ReadKey();
+        //    }
+        //}
 
 
 
@@ -186,7 +377,7 @@ namespace ConsoleApp1
             return new IPAddress(BitConverter.GetBytes(ipAddress)).ToString();
         }
 
-        private static string BytesToIPAddressString(byte[] bytes)
+        static string BytesToIPAddressString(byte[] bytes)
         {
             if (bytes == null)
             {
@@ -203,26 +394,6 @@ namespace ConsoleApp1
                 return "Invalid IP Address";
             }
         }
-
-
-        //private static string BytesToIPAddressString(byte[] bytes)
-        //{
-        //    if (bytes == null)
-        //    {
-        //        return "Invalid IP Address: Null bytes array";
-        //    }
-
-        //    try
-        //    {
-        //        IPAddress ip = new IPAddress(bytes);
-        //        return ip.ToString();
-        //    }
-        //    catch (ArgumentException)
-        //    {
-        //        return $"Invalid IP Address: Byte array length {bytes.Length}";
-        //    }
-        //}
-
 
 
         static void InitializeFileSystemWatcher(string path, string filter, string notifyFilter)
@@ -258,12 +429,12 @@ namespace ConsoleApp1
         }
 
 
-        private static void OnProcessStarted(ProcessTraceData data)
+        static void OnProcessStarted(ProcessTraceData data)
         {
             Console.WriteLine($"[ProcessStart] {data.ProcessName} (PID: {data.ProcessID}) started. Provider: {data.ProviderName}, Event: ProcessStart, Command Line: {data.CommandLine}\n");
         }
 
-        private static void OnProcessStopped(ProcessTraceData data)
+        static void OnProcessStopped(ProcessTraceData data)
         {
 
             Console.WriteLine($"[ProcessStop] {data.ProcessName} (PID: {data.ProcessID}) stopped. Provider: {data.ProviderName}, Event: ProcessStop, Command Line: {data.CommandLine}\n");
@@ -275,28 +446,33 @@ namespace ConsoleApp1
         //{
         //    Console.WriteLine($"[ImageLoad] {data.FileName} loaded by {data.ProcessName} with PID {data.ProcessID}Provider: {data.ProviderName}, Event: ImageLoad");
         //}
-        private static void OnChanged(object source, FileSystemEventArgs e)
+        static void OnChanged(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileChanged] {e.FullPath}");
         }
 
-        private static void OnCreated(object source, FileSystemEventArgs e)
+        static void OnCreated(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileCreated] {e.FullPath}");
         }
 
-        private static void OnDeleted(object source, FileSystemEventArgs e)
+        static void OnDeleted(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileDeleted] {e.FullPath}");
         }
 
-        private static void OnRenamed(object source, RenamedEventArgs e)
+        static void OnRenamed(object source, RenamedEventArgs e)
         {
             Console.WriteLine($"[FileRenamed] from {e.OldFullPath} to {e.FullPath}");
         }
-        private static void OnError(object source, ErrorEventArgs e)
+        static void OnError(object source, ErrorEventArgs e)
         {
             Console.WriteLine($"[WatcherError] {e.GetException().Message}");
         }
     }
 }
+
+
+
+
+

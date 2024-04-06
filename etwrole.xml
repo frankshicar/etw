@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Configuration>
     <FileSystemWatcherConfig>
-        <Path>C:\Users\User\Desktop\etw test</Path>
+        <Path>C:\Users\frank\OneDrive\桌面\etw</Path>
         <Filter>*.*</Filter>
         <NotifyFilter>FileName,DirectoryName,LastWrite</NotifyFilter>
     </FileSystemWatcherConfig>
@@ -12,6 +12,6 @@
 		<Name>cmd.exe</Name>
 	</ProcessMonitorConfig>
 	<Blacklists>
-		<IP>192.168.0.115</IP>
+		<IP>192.168.0.116</IP>
 	</Blacklists>
 </Configuration>
