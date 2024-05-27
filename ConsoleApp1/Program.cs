@@ -10,30 +10,30 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Xml.Linq;
 using System.Net;
-using Nest;
+//using Nest;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace ConsoleApp1
 {
-    public class ProcessEvent
-    {
-        public string ProcessName { get; set; }
-        public int ProcessId { get; set; }
-        public string CommandLine { get; set; }
-        public DateTime Timestamp { get; set; }
-        public string EventType { get; set; }
-    }
+    //public class ProcessEvent
+    //{
+    //    public string ProcessName { get; set; }
+    //    public int ProcessId { get; set; }
+    //    public string CommandLine { get; set; }
+    //    public DateTime Timestamp { get; set; }
+    //    public string EventType { get; set; }
+    //}
 
-    public class TcpIpEvent
-    {
-        public string EventName { get; set; }
-        public string SourceIPv4Address { get; set; }
-        public string DestIPv4Address { get; set; }
-        public bool IsBlacklisted { get; set; }
-        public DateTime Timestamp { get; set; }
-    }
+    //public class TcpIpEvent
+    //{
+    //    public string EventName { get; set; }
+    //    public string SourceIPv4Address { get; set; }
+    //    public string DestIPv4Address { get; set; }
+    //    public bool IsBlacklisted { get; set; }
+    //    public DateTime Timestamp { get; set; }
+    //}
 
     class Program
     {
@@ -41,34 +41,36 @@ namespace ConsoleApp1
         static TraceEventSession traceEventSession;
         static HashSet<string> monitoredProcesses;
         static HashSet<string> blacklistIPs;
-        private static ElasticClient client;
+        //private static ElasticClient client;
+
+
 
         static void Main(string[] args)
         {
-            var uri = new Uri("http://localhost:9200");
+            //var uri = new Uri("http://localhost:9200");
 
-            var settings = new ConnectionSettings(uri);
+            //var settings = new ConnectionSettings(uri);
 
-            client = new ElasticClient(settings);
-            var response = client.Ping();
-            if (response.IsValid)
-            {
-                Console.WriteLine("Successfully connected to Elasticsearch.");
-            }
-            else
-            {
-                Console.WriteLine("Failed to connect to Elasticsearch.");
-            }
+            //client = new ElasticClient(settings);
+            //var response = client.Ping();
+            //if (response.IsValid)
+            //{
+            //    Console.WriteLine("Successfully connected to Elasticsearch.");
+            //}
+            //else
+            //{
+            //    Console.WriteLine("Failed to connect to Elasticsearch.");
+            //}
 
-            if (!(TraceEventSession.IsElevated() ?? false))
-            {
-                Console.WriteLine("Please run me as administrator");
-                return;
-            }
+            //if (!(TraceEventSession.IsElevated() ?? false))
+            //{
+            //    Console.WriteLine("Please run me as administrator");
+            //    return;
+            //}
 
             // 讀取 XML 配置文件
             //var config = XDocument.Load("etwrole.xml");
-            var config = XDocument.Load(@"C:\Users\USER\Source\Repos\ETWW\ConsoleApp1\etwrole (1).xml");
+            var config = XDocument.Load(@"C:\Users\frank\OneDrive\桌面\etw\etwrole.xml");
             var watcherConfig = config.Element("Configuration").Element("FileSystemWatcherConfig");
             var processMonitorConfig = config.Element("Configuration").Element("ProcessMonitorConfig");
             var blacklistrConfig = config.Element("Configuration").Element("blacklist");
@@ -146,28 +148,29 @@ namespace ConsoleApp1
 
             traceEventSession = new TraceEventSession("MyETWSession");
             traceEventSession.EnableKernelProvider(
-                    KernelTraceEventParser.Keywords.Process |
+                    KernelTraceEventParser.Keywords.NetworkTCPIP | 
+                    KernelTraceEventParser.Keywords.Process |      
                     KernelTraceEventParser.Keywords.ImageLoad);
             traceEventSession.EnableProvider("Microsoft-Windows-TCPIP");
 
             //ProcessStart
             traceEventSession.Source.Kernel.ProcessStart += data =>
             {
-                var processEvent = new ProcessEvent
-                {
-                    ProcessName = data.ProcessName,
-                    ProcessId = data.ProcessID,
-                    CommandLine = data.CommandLine,
-                    Timestamp = DateTime.UtcNow,
-                    EventType = "ProcessStart"
-                };
+                //var processEvent = new ProcessEvent
+                //{
+                //    ProcessName = data.ProcessName,
+                //    ProcessId = data.ProcessID,
+                //    CommandLine = data.CommandLine,
+                //    Timestamp = DateTime.UtcNow,
+                //    EventType = "ProcessStart"
+                //};
 
                 OnProcessStarted(data);
-                IndexDataToElasticsearch(processEvent, "etw-events");
+                //IndexDataToElasticsearch(processEvent, "etw-events");
                 if (data.ProcessName.ToLower().Contains("nc"))
                 {
                     Console.WriteLine($"NC Process started: {data.ProcessName} (PID: {data.ProcessID})");
-                    
+
 
                     string filePath = GetProcessFilePath(data.ProcessID);
                     if (!string.IsNullOrEmpty(filePath))
@@ -179,37 +182,38 @@ namespace ConsoleApp1
             };
 
             //ProcessStop
-            traceEventSession.Source.Kernel.ProcessStop += data =>
-            {
-                var processEvent = new ProcessEvent
-                {
-                    ProcessName = data.ProcessName,
-                    ProcessId = data.ProcessID,
-                    CommandLine = data.CommandLine,
-                    Timestamp = DateTime.UtcNow,
-                    EventType = "ProcessStop"
-                };
-                OnProcessStopped(data);
-                IndexDataToElasticsearch(processEvent, "etw-events");
-            };
+            //traceEventSession.Source.Kernel.ProcessStop += data =>
+            //{
+            //    var processEvent = new ProcessEvent
+            //    {
+            //        ProcessName = data.ProcessName,
+            //        ProcessId = data.ProcessID,
+            //        CommandLine = data.CommandLine,
+            //        Timestamp = DateTime.UtcNow,
+            //        EventType = "ProcessStop"
+            //    };
+            //    OnProcessStopped(data);
+            //    IndexDataToElasticsearch(processEvent, "etw-events");
+            //};
 
-            //TCPIP
+            ////TCPIP
             traceEventSession.Source.Dynamic.All += data =>
             {
 
                 if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
                 {
-                    var tcpIpEvent = new TcpIpEvent
-                    {
-                        EventName = data.EventName,
-                        Timestamp = DateTime.UtcNow
-                    };
+                    //var tcpIpEvent = new TcpIpEvent
+                    //{
+                    //    EventName = data.EventName,
+                    //    Timestamp = DateTime.UtcNow
+                    //};
 
                     // 这里打印所有 TCP/IP 事件的信息
                     Console.WriteLine($"Event Name: {data.EventName}");
                     foreach (var payloadName in data.PayloadNames)
                     {
                         var payloadValue = data.PayloadByName(payloadName);
+                        var processId = data.ProcessID;
                         if (payloadValue != null)
                         {
                             // 如果是IPv4地址字段，则进行转换
@@ -222,6 +226,8 @@ namespace ConsoleApp1
                                 // 检查是否在黑名单中
                                 if (blacklistIPs.Contains(ipAddressString))
                                 {
+                                    //new
+                                    TerminateProcess(processId);
                                     Console.WriteLine($"Detected blacklisted IP address: {ipAddressString}");
                                 }
                             }
@@ -231,13 +237,55 @@ namespace ConsoleApp1
                             }
                         }
                     }
-                    tcpIpEvent.IsBlacklisted = blacklistIPs.Contains(tcpIpEvent.SourceIPv4Address) || blacklistIPs.Contains(tcpIpEvent.DestIPv4Address);
-                    IndexDataToElasticsearch(tcpIpEvent, "tcpip-events");
+                    //tcpIpEvent.IsBlacklisted = blacklistIPs.Contains(tcpIpEvent.SourceIPv4Address) || blacklistIPs.Contains(tcpIpEvent.DestIPv4Address);
+                    //IndexDataToElasticsearch(tcpIpEvent, "tcpip-events");
                 }
             };
-            
+
             var etwThread = new Thread(() => traceEventSession.Source.Process());
             etwThread.Start();
+        }
+
+        //new
+        private static void TerminateProcess(int processId)
+        {
+            try
+            {
+                Process process = Process.GetProcessById(processId);
+                if (!process.HasExited) // 检查进程是否仍在运行
+                {
+                    process.Kill(); // 终止进程
+                    Console.WriteLine($"Process {processId} terminated.");
+                    // 在这里记录进程终止信息
+                    LogProcessStop(processId, process.ProcessName);
+                }
+                else
+                {
+                    Console.WriteLine($"Process {processId} has already exited.");
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                // 指定的进程不存在
+                Console.WriteLine($"Error: The process {processId} does not exist. {ex.Message}");
+            }
+            catch (InvalidOperationException ex)
+            {
+                // 进程已经退出
+                Console.WriteLine($"Error: The process {processId} has already exited. {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                // 其他错误
+                Console.WriteLine($"Error terminating process {processId}: {ex.Message}");
+            }
+        }
+
+        //new
+        // 用于记录进程停止信息的方法
+        private static void LogProcessStop(int processId, string processName)
+        {
+            Console.WriteLine($"[ProcessStop] Process {processName} (PID: {processId}) has been terminated.");
         }
 
 
@@ -275,7 +323,7 @@ namespace ConsoleApp1
         //        }
         //    }
         //}
-         
+
 
         ////全印
         //static void InitializeTCPIP()
@@ -359,84 +407,6 @@ namespace ConsoleApp1
             }
         }
 
-        //static void InitializeETW()
-        //{
-        //    traceEventSession = new TraceEventSession("MyETWSession");
-        //    traceEventSession.EnableKernelProvider(
-        //        KernelTraceEventParser.Keywords.Process |
-        //        KernelTraceEventParser.Keywords.ImageLoad);
-        //    traceEventSession.Source.Kernel.ProcessStart += data =>
-        //    {
-        //        if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
-        //        {
-        //            OnProcessStarted(data);
-        //        }
-        //    };
-        //    traceEventSession.Source.Kernel.ProcessStop += data =>
-        //    {
-        //        if (monitoredProcesses.Any(process => Regex.IsMatch(data.CommandLine, Regex.Escape(process), RegexOptions.IgnoreCase)))
-        //        {
-        //            OnProcessStopped(data);
-        //        }
-        //    };
-
-        //    var etwThread = new Thread(() => traceEventSession.Source.Process());
-        //    etwThread.Start();
-        //}
-
-        ////全印
-        //static void InitializeTCPIP()
-        //{
-        //     指定 ETW 会话的名称
-        //    string sessionName = "TcpIpMonitoringSession";
-
-        //     创建一个 ETW 会话
-        //    using (var session = new TraceEventSession(sessionName))
-        //    {
-        //         监听 Microsoft-Windows-TCPIP 提供者的事件
-        //        session.EnableProvider("Microsoft-Windows-TCPIP");
-
-        //         事件处理
-        //        session.Source.Dynamic.All += data =>
-        //        {
-        //            if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
-        //            {
-        //                 这里打印所有 TCP/IP 事件的信息
-        //                Console.WriteLine($"Event Name: {data.EventName}");
-        //                foreach (var payloadName in data.PayloadNames)
-        //                {
-        //                    var payloadValue = data.PayloadByName(payloadName);
-        //                    if (payloadValue != null)
-        //                    {
-        //                         如果是IPv4地址字段，则进行转换
-        //                        if (payloadName == "SourceIPv4Address" || payloadName == "DestIPv4Address")
-        //                        {
-        //                             将整数形式的IP地址转换为点分十进制格式
-        //                            var ipAddressString = ConvertToIPAddressString((int)payloadValue);
-        //                            Console.WriteLine($" {payloadName}: {ipAddressString}");
-
-        //                             检查是否在黑名单中
-        //                            if (blacklistIPs.Contains(ipAddressString))
-        //                            {
-        //                                Console.WriteLine($"Detected blacklisted IP address: {ipAddressString}");
-        //                            }
-        //                        }
-        //                        else
-        //                        {
-        //                            Console.WriteLine($" {payloadName}: {payloadValue}");
-        //                        }
-        //                    }
-        //                }
-        //            }
-
-        //        };
-
-        //        Console.WriteLine("Listening for TCP/IP events. Press any key to exit.");
-        //        session.Source.Process();
-        //        Console.ReadKey();
-        //    }
-        //}
-
 
 
         // 将整数形式的IPv4地址转换为点分十进制格式
@@ -517,55 +487,55 @@ namespace ConsoleApp1
         private static void OnChanged(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileChanged] {e.FullPath}");
-            var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
-            IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
+            //var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
+            //IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
         }
 
         private static void OnCreated(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileCreated] {e.FullPath}");
-            var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
-            IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
+            //var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
+            //IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
         }
 
         private static void OnDeleted(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileDeleted] {e.FullPath}");
-            var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
-            IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
+            //var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
+            //IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
         }
 
         private static void OnRenamed(object source, RenamedEventArgs e)
         {
             Console.WriteLine($"[FileRenamed] from {e.OldFullPath} to {e.FullPath}");
-            var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
-            IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
+            //var fileSystemEvent = new { EventType = e.ChangeType.ToString(), FilePath = e.FullPath, Timestamp = DateTime.UtcNow };
+            //IndexDataToElasticsearch(fileSystemEvent, "file-system-events");
         }
         private static void OnError(object source, ErrorEventArgs e)
         {
             Console.WriteLine($"[WatcherError] {e.GetException().Message}");
-            var errorEvent = new { EventType = "Error", Message = e.GetException().Message, Timestamp = DateTime.UtcNow };
-            IndexDataToElasticsearch(errorEvent, "file-system-events");
+            //var errorEvent = new { EventType = "Error", Message = e.GetException().Message, Timestamp = DateTime.UtcNow };
+            //IndexDataToElasticsearch(errorEvent, "file-system-events");
         }
 
-        private static void IndexDataToElasticsearch<T>(T data, string indexname) where T : class
-        {
-            if (!(client.Indices.Exists(indexname).Exists))
-            {
-                var createIndexResponse = client.Indices.Create(indexname, c => c.Map<T>(m => m.AutoMap()) // 自动映射T类型的属性
-                .Settings(s => s
-                .NumberOfShards(1) // 设置分片数量
-                .NumberOfReplicas(1))); // 设置副本数量
+        //private static void IndexDataToElasticsearch<T>(T data, string indexname) where T : class
+        //{
+        //    if (!(client.Indices.Exists(indexname).Exists))
+        //    {
+        //        var createIndexResponse = client.Indices.Create(indexname, c => c.Map<T>(m => m.AutoMap()) // 自动映射T类型的属性
+        //        .Settings(s => s
+        //        .NumberOfShards(1) // 设置分片数量
+        //        .NumberOfReplicas(1))); // 设置副本数量
 
-            }
+        //    }
 
-            var response = client.Index(data, idx => idx.Index(indexname));
-            if (!response.IsValid)
-            {
-                Console.WriteLine($"Error indexing data to Elasticsearch: {response.OriginalException.Message}");
-            }
+        //    var response = client.Index(data, idx => idx.Index(indexname));
+        //    if (!response.IsValid)
+        //    {
+        //        Console.WriteLine($"Error indexing data to Elasticsearch: {response.OriginalException.Message}");
+        //    }
 
-        }
+        //}
     }
 }
 

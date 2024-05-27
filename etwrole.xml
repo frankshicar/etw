@@ -13,5 +13,6 @@
 	</ProcessMonitorConfig>
 	<Blacklists>
 		<IP>192.168.0.116</IP>
+		<IP>192.168.1.107</IP>
 	</Blacklists>
 </Configuration>
