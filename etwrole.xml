@@ -2,6 +2,7 @@
 <Configuration>
     <FileSystemWatcherConfig>
         <Path>C:\Users\frank\OneDrive\桌面\etw</Path>
+		<Path>C:\Users\frank\OneDrive\桌面\新增資料夾</Path>
         <Filter>*.*</Filter>
         <NotifyFilter>FileName,DirectoryName,LastWrite</NotifyFilter>
     </FileSystemWatcherConfig>
