@@ -347,7 +347,7 @@ namespace SystemMonitoring
         {
             try
             {
-                // 增加更多的事件類型監控
+          
                 if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
                 {
                     // 檢查各種 TCP/IP 相關事件
