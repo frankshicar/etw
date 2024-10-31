@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -175,136 +174,155 @@ namespace SystemMonitoring
         {
             _watcher.EnableRaisingEvents = true;
 
-            // Start file hash monitoring
-            _ = StartFileHashMonitoring(_cancellationTokenSource.Token);
-
             // Start ETW processing
             await Task.Run(() => _traceSession.Source.Process());
         }
 
-        private async Task StartFileHashMonitoring(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                foreach (var file in Directory.GetFiles(_config.WatchPath, "*.*", SearchOption.AllDirectories))
-                {
-                    await CheckFileHash(file);
-                }
-                await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
-            }
-        }
-
-
-        private async Task<FileHashInfo> CalculateFileHashes(string filePath)
-        {
-            var hashInfo = new FileHashInfo
-            {
-                FilePath = filePath,
-                LastChecked = DateTime.UtcNow
-            };
-
-            // 使用緩衝區讀取，避免一次性將整個文件載入內存
-            const int bufferSize = 8192; // 8KB 緩衝區
-            var buffer = new byte[bufferSize];
-
-            using (var md5 = MD5.Create())
-            using (var sha1 = SHA1.Create())
-            using (var sha256 = SHA256.Create())
-            {
-                try
-                {
-                    // 使用 FileShare.Read 允許其他程序讀取文件
-                    using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
-                    {
-                        int bytesRead;
-                        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                        {
-                            md5.TransformBlock(buffer, 0, bytesRead, null, 0);
-                            sha1.TransformBlock(buffer, 0, bytesRead, null, 0);
-                            sha256.TransformBlock(buffer, 0, bytesRead, null, 0);
-                        }
-
-                        // 完成最後的哈希計算
-                        md5.TransformFinalBlock(buffer, 0, 0);
-                        sha1.TransformFinalBlock(buffer, 0, 0);
-                        sha256.TransformFinalBlock(buffer, 0, 0);
-
-                        // 獲取哈希值並轉換為字符串
-                        hashInfo.MD5Hash = BitConverter.ToString(md5.Hash).Replace("-", "");
-                        hashInfo.SHA1Hash = BitConverter.ToString(sha1.Hash).Replace("-", "");
-                        hashInfo.SHA256Hash = BitConverter.ToString(sha256.Hash).Replace("-", "");
-                    }
-
-                    return hashInfo;
-                }
-                catch (IOException ex)
-                {
-                    throw new IOException($"無法讀取文件 {filePath}: {ex.Message}", ex);
-                }
-                catch (UnauthorizedAccessException ex)
-                {
-                    throw new UnauthorizedAccessException($"沒有權限訪問文件 {filePath}: {ex.Message}", ex);
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception($"計算文件 {filePath} 的哈希值時發生錯誤: {ex.Message}", ex);
-                }
-            }
-        }
-
-        // 使用此方法的檢查函數
-        private async Task CheckFileHash(string filePath)
+        static void ComputeHashes(string filePath)
         {
             try
             {
-                if (!File.Exists(filePath))
+                // 使用 FileShare.Read 允許其他程序同時訪問文件
+                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var md5 = MD5.Create())
+                using (var sha1 = SHA1.Create())
+                using (var sha256 = SHA256.Create())
                 {
-                    Console.WriteLine($"[FileNotFound] {filePath} 不存在");
-                    return;
+                    Console.WriteLine($"[Hash Calculation Start] File: {filePath}");
+
+                    // 計算 MD5
+                    byte[] md5Hash = md5.ComputeHash(stream);
+                    Console.WriteLine($"MD5: {BitConverter.ToString(md5Hash).Replace("-", "")}");
+
+                    // 計算 SHA1
+                    stream.Position = 0; 
+                    byte[] sha1Hash = sha1.ComputeHash(stream);
+                    Console.WriteLine($"SHA1: {BitConverter.ToString(sha1Hash).Replace("-", "")}");
+
+                    // 計算 SHA256
+                    stream.Position = 0; 
+                    byte[] sha256Hash = sha256.ComputeHash(stream);
+                    Console.WriteLine($"SHA256: {BitConverter.ToString(sha256Hash).Replace("-", "")}");
+
+                    Console.WriteLine("[Hash Calculation Complete]");
                 }
-
-                var hashInfo = await CalculateFileHashes(filePath);
-
-                if (_fileHashes.TryGetValue(filePath, out var existingHash))
-                {
-                    if (existingHash.SHA256Hash != hashInfo.SHA256Hash)
-                    {
-                        Console.WriteLine($"[HashChange] 文件: {filePath}");
-                        Console.WriteLine($"舊的 Hash (SHA256): {existingHash.SHA256Hash}");
-                        Console.WriteLine($"新的 Hash (SHA256): {hashInfo.SHA256Hash}");
-
-                        // 可以添加更詳細的比較
-                        if (existingHash.MD5Hash != hashInfo.MD5Hash)
-                            Console.WriteLine($"MD5 已改變");
-                        if (existingHash.SHA1Hash != hashInfo.SHA1Hash)
-                            Console.WriteLine($"SHA1 已改變");
-                    }
-                }
-
-                _fileHashes[filePath] = hashInfo;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HashError] 計算文件 {filePath} 的哈希值失敗: {ex.Message}");
+                Console.WriteLine($"[Error] Failed to compute hashes for {filePath}: {ex.Message}");
             }
         }
+
+        // 增加一個異步版本的哈希計算方法，用於處理大文件
+        static async Task ComputeHashesAsync(string filePath)
+        {
+            try
+            {
+                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var md5 = MD5.Create())
+                using (var sha1 = SHA1.Create())
+                using (var sha256 = SHA256.Create())
+                {
+                    Console.WriteLine($"[Hash Calculation Start] File: {filePath}");
+
+                    // 使用緩衝區進行異步讀取
+                    var buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                    {
+                        md5.TransformBlock(buffer, 0, bytesRead, null, 0);
+                        sha1.TransformBlock(buffer, 0, bytesRead, null, 0);
+                        sha256.TransformBlock(buffer, 0, bytesRead, null, 0);
+                    }
+
+                    // 完成哈希計算
+                    md5.TransformFinalBlock(buffer, 0, 0);
+                    sha1.TransformFinalBlock(buffer, 0, 0);
+                    sha256.TransformFinalBlock(buffer, 0, 0);
+
+                    // 輸出結果
+                    Console.WriteLine($"MD5: {BitConverter.ToString(md5.Hash).Replace("-", "")}");
+                    Console.WriteLine($"SHA1: {BitConverter.ToString(sha1.Hash).Replace("-", "")}");
+                    Console.WriteLine($"SHA256: {BitConverter.ToString(sha256.Hash).Replace("-", "")}");
+
+                    Console.WriteLine("[Hash Calculation Complete]");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] Failed to compute hashes for {filePath}: {ex.Message}");
+            }
+        }
+
+
 
         private void OnProcessStarted(ProcessTraceData data)
         {
-            _processNames[data.ProcessID] = data.ProcessName;
-            Console.WriteLine($"[ProcessStart] {data.ProcessName} (PID: {data.ProcessID})");
-            Console.WriteLine($"Command Line: {data.CommandLine}");
-
-            if (_config.MonitoredProcesses.Contains(data.ProcessName))
+            if (_config.MonitoredProcesses.Contains(data.ProcessName, StringComparer.OrdinalIgnoreCase))
             {
-                var filePath = GetProcessFilePath(data.ProcessID);
-                if (!string.IsNullOrEmpty(filePath))
+                try
                 {
-                    _ = CheckFileHash(filePath);
+                    Console.WriteLine($"[ProcessStart] {data.ProcessName} (PID: {data.ProcessID}) 已啟動。");
+                    Console.WriteLine($"命令列: {data.CommandLine}");
+
+                    string filePath = ExtractExecutablePath(data.CommandLine);
+
+                    if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+                    {
+                        Console.WriteLine($"[ProcessFile] {filePath}");
+                        // 使用Task來非同步計算雜湊值
+                        Task.Run(() => ComputeHashes(filePath))
+                            .ContinueWith(t => {
+                                if (t.Exception != null)
+                                {
+                                    Console.WriteLine($"[Error] 計算雜湊值時發生錯誤: {t.Exception.InnerException?.Message}");
+                                }
+                            }, TaskContinuationOptions.OnlyOnFaulted);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[警告] 無法取得或驗證程序 {data.ProcessName} 的檔案路徑");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Error] 處理程序啟動事件時發生錯誤: {ex.Message}");
                 }
             }
         }
+        private string ExtractExecutablePath(string commandLine)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(commandLine))
+                    return null;
 
+                // 如果命令行以引號開始，尋找配對的結束引號
+                if (commandLine.StartsWith("\""))
+                {
+                    int endQuote = commandLine.IndexOf("\"", 1);
+                    if (endQuote > 0)
+                    {
+                        return commandLine.Substring(1, endQuote - 1);
+                    }
+                }
+
+                // 如果沒有引號，取第一個空格之前的內容
+                int spaceIndex = commandLine.IndexOf(" ");
+                if (spaceIndex > 0)
+                {
+                    return commandLine.Substring(0, spaceIndex);
+                }
+
+                // 如果沒有空格，返回整個命令行
+                return commandLine;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] 提取可執行文件路徑時發生錯誤: {ex.Message}");
+                return null;
+            }
+        }
         private void OnProcessStopped(ProcessTraceData data)
         {
             Console.WriteLine($"[ProcessStop] {data.ProcessName} (PID: {data.ProcessID})");
@@ -329,7 +347,7 @@ namespace SystemMonitoring
         private void OnFileChanged(object sender, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileChanged] {e.FullPath}");
-            _ = CheckFileHash(e.FullPath);
+            //_ = CheckFileHash(e.FullPath);
         }
         private static void OnFileCreated(object source, FileSystemEventArgs e)
         {
@@ -357,7 +375,7 @@ namespace SystemMonitoring
             try
             {
                 var process = Process.GetProcessById(processId);
-                return process.MainModule.FileName;
+                return process.MainModule?.FileName;
             }
             catch (Exception ex)
             {
@@ -365,6 +383,7 @@ namespace SystemMonitoring
                 return null;
             }
         }
+
 
         private static string ConvertToIPAddress(int ipAddress)
         {
