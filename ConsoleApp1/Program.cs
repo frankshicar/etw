@@ -21,8 +21,7 @@ namespace SystemMonitoring
     using System;
     using System.Threading.Tasks;
 
-    namespace SystemMonitoring
-    {
+
         class Program
         {
             static async Task Main(string[] args)
@@ -70,7 +69,7 @@ namespace SystemMonitoring
                 }
             }
         }
-    }
+    
 
     public class MonitoringConfiguration
     {
@@ -329,18 +328,65 @@ namespace SystemMonitoring
             _processNames.Remove(data.ProcessID);
         }
 
+        //private void OnTcpIpEvent(TraceEvent data)
+        //{
+        //    if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
+        //    {
+        //        var sourceIp = ConvertToIPAddress((int)data.PayloadByName("SourceIPv4Address"));
+        //        var destIp = ConvertToIPAddress((int)data.PayloadByName("DestIPv4Address"));
+
+        //        if (_config.BlacklistedIPs.Contains(sourceIp) || _config.BlacklistedIPs.Contains(destIp))
+        //        {
+        //            Console.WriteLine($"[BlacklistedIP] Process {data.ProcessID} attempting to connect to {destIp}");
+        //            TerminateProcess(data.ProcessID);
+        //        }
+        //    }
+        //}
+
         private void OnTcpIpEvent(TraceEvent data)
         {
-            if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
+            try
             {
-                var sourceIp = ConvertToIPAddress((int)data.PayloadByName("SourceIPv4Address"));
-                var destIp = ConvertToIPAddress((int)data.PayloadByName("DestIPv4Address"));
-
-                if (_config.BlacklistedIPs.Contains(sourceIp) || _config.BlacklistedIPs.Contains(destIp))
+                // 增加更多的事件類型監控
+                if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
                 {
-                    Console.WriteLine($"[BlacklistedIP] Process {data.ProcessID} attempting to connect to {destIp}");
-                    TerminateProcess(data.ProcessID);
+                    // 檢查各種 TCP/IP 相關事件
+                    switch (data.EventName)
+                    {
+                        case "TcpipSendSlowPath":
+                        case "TcpConnectionAttempt":
+                        case "TcpPortOpened":
+                        case "TcpConnect":
+                        case "TcpDisconnect":
+                            var sourceIp = data.PayloadByName("SourceIPv4Address") != null
+                                ? ConvertToIPAddress((int)data.PayloadByName("SourceIPv4Address"))
+                                : null;
+                            var destIp = data.PayloadByName("DestIPv4Address") != null
+                                ? ConvertToIPAddress((int)data.PayloadByName("DestIPv4Address"))
+                                : null;
+
+                            if (sourceIp != null || destIp != null)
+                            {
+                                Console.WriteLine($"[TCP Event] {data.EventName}");
+                                Console.WriteLine($"Source IP: {sourceIp ?? "N/A"}");
+                                Console.WriteLine($"Destination IP: {destIp ?? "N/A"}");
+                                Console.WriteLine($"Process ID: {data.ProcessID}");
+
+                                // 檢查是否為黑名單 IP
+                                if ((sourceIp != null && _config.BlacklistedIPs.Contains(sourceIp)) ||
+                                    (destIp != null && _config.BlacklistedIPs.Contains(destIp)))
+                                {
+                                    Console.WriteLine($"[BlacklistedIP] 進程 {data.ProcessID} 嘗試連接到黑名單 IP");
+                                    TerminateProcess(data.ProcessID);
+                                }
+                            }
+                            break;
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] 處理 TCP/IP 事件時發生錯誤: {ex.Message}");
             }
         }
 
