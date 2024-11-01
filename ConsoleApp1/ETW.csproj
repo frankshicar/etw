@@ -173,9 +173,6 @@
     <None Include="Properties\compile_and_run.bat" />
     <None Include="Properties\run_macro.ps1" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="etwrole %281%29.xml" />
-  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>

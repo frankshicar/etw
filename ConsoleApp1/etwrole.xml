@@ -1,14 +1,21 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Configuration>
-    <FileSystemWatcherConfig>
-        <Path>C:\Users\User\Desktop\etw test</Path>
-        <Filter>*.*</Filter>
-        <NotifyFilter>FileName,DirectoryName,LastWrite</NotifyFilter>
-    </FileSystemWatcherConfig>
-    <ProcessMonitorConfig>
-        <Name>chrome.exe</Name>
-        <Name>msedge.exe</Name>
+	<FileSystemWatcherConfig>
+		<Path>C:\Users\brad9\Desktop</Path>
+		<Filter>*.*</Filter>
+		<NotifyFilter>FileName,DirectoryName,LastWrite</NotifyFilter>
+	</FileSystemWatcherConfig>
+	<ProcessMonitorConfig>
+		<Name>chrome</Name>
+		<Name>msedge</Name>
 		<Name>notepad.exe</Name>
-		<Name>cmd.exe</Name>
+		<Name>cmd</Name>
+		<Name>Anydesk</Name>
 	</ProcessMonitorConfig>
+	<Blacklists>
+		<IP>192.168.0.116</IP>
+		<IP>192.168.1.107</IP>
+		<IP>192.168.0.105</IP>
+		<IP>google.com</IP>
+	</Blacklists>
 </Configuration>
