@@ -33,7 +33,7 @@ namespace SystemMonitoring
                     Console.WriteLine("Starting System Monitoring...");
 
                     // 配置文件路徑
-                    string configPath = "C:/Users/brad9/Desktop/ETW-logplatform project/ETW_Competition_4/ConsoleApp1/etwrole.xml"; // 請確保這個路徑正確
+                    string configPath = "C:\\Users\\frank\\OneDrive\\桌面\\etw_elasticsearch\\etwrole.xml"; // 請確保這個路徑正確
                     if (args.Length > 0)
                     {
                         configPath = args[0];
@@ -41,7 +41,7 @@ namespace SystemMonitoring
 
                     var uri = new Uri("http://localhost:9200");
                     var settings = new ConnectionSettings(uri)
-                        .BasicAuthentication("elastic", "2xX02HZSSkjCVsY=MRw5");
+                        .BasicAuthentication("elastic", "ZYi7WcxwMyvQXg0IyMBj");
                     client = new ElasticClient(settings);
 
                     // 創建並啟動監控系統
@@ -370,9 +370,9 @@ namespace SystemMonitoring
                 if (data.ProviderName == "Microsoft-Windows-TCPIP" && data.EventName == "TcpipSendSlowPath")
                 {
                     // 檢查各種 TCP/IP 相關事件
-                    switch (data.EventName)
-                    {
-                        case "TcpDisconnect":
+                    //switch (data.EventName)
+                    //{
+                    //    case "TcpDisconnect":
                             var sourceIp = data.PayloadByName("SourceIPv4Address") != null
                                 ? ConvertToIPAddress((int)data.PayloadByName("SourceIPv4Address"))
                                 : null;
@@ -395,25 +395,25 @@ namespace SystemMonitoring
                                     TerminateProcess(data.ProcessID);
                                 }
                             }
-                            break;
+                    //        break;
+                    //}
+
+                    var SourceIP = ConvertToIPAddress((int)data.PayloadByName("SourceIPv4Address"));
+                    var DestIP = ConvertToIPAddress((int)data.PayloadByName("DestIPv4Address"));
+                    if ((SourceIP != "0.0.0.0" || DestIP != "0.0.0.0"))
+                    {
+                        var tcpipData = new TCPIPData()
+                        {
+                            TCPIPEvent = data.EventName,
+                            SourceIP = SourceIP,
+                            DestIP = DestIP,
+                            ProcessID = data.ProcessID,
+                            CreateTime = DateTime.Now,
+                        };
+
+                        IndexDataToElasticsearch(tcpipData, "tcpip");
                     }
 
-                    //var SourceIP = ConvertToIPAddress((int)data.PayloadByName("SourceIPv4Address"));
-                    //var DestIP = ConvertToIPAddress((int)data.PayloadByName("DestIPv4Address"));
-                    //if ((SourceIP != "0.0.0.0" || DestIP != "0.0.0.0"))
-                    //{
-                    //    var tcpipData = new TCPIPData()
-                    //    {
-                    //        TCPIPEvent = data.EventName,
-                    //        SourceIP = SourceIP,
-                    //        DestIP = DestIP,
-                    //        ProcessID = data.ProcessID,
-                    //        CreateTime = DateTime.Now,
-                    //    };
-
-                    //    IndexDataToElasticsearch(tcpipData, "tcpip");
-                    //}
-                    
                 }
             }
             catch (Exception ex)
