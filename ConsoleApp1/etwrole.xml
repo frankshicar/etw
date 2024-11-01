@@ -13,7 +13,7 @@
 		<Name>Anydesk</Name>
 	</ProcessMonitorConfig>
 	<Blacklists>
-		<IP>192.168.0.116</IP>
+		<IP>192.168.0.103</IP>
 		<IP>192.168.1.107</IP>
 		<IP>192.168.0.105</IP>
 		<IP>google.com</IP>

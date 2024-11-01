@@ -97,6 +97,7 @@ namespace SystemMonitoring
         public string DestIP { get; set;}
         public int ProcessID { get; set;}
         public DateTime CreateTime { get; set; }
+        public bool IsBlacklisted { get; set; }
     }
 
     public class MonitoringConfiguration
@@ -379,7 +380,7 @@ namespace SystemMonitoring
                             var destIp = data.PayloadByName("DestIPv4Address") != null
                                 ? ConvertToIPAddress((int)data.PayloadByName("DestIPv4Address"))
                                 : null;
-
+                    bool isBlacklisted = false;
                             if (sourceIp != null || destIp != null)
                             {
                                 Console.WriteLine($"[TCP Event] {data.EventName}");
@@ -391,6 +392,7 @@ namespace SystemMonitoring
                                 if ((sourceIp != null && _config.BlacklistedIPs.Contains(sourceIp)) ||
                                     (destIp != null && _config.BlacklistedIPs.Contains(destIp)))
                                 {
+                                    isBlacklisted = true;
                                     Console.WriteLine($"[BlacklistedIP] 進程 {data.ProcessID} 嘗試連接到黑名單 IP");
                                     TerminateProcess(data.ProcessID);
                                 }
@@ -409,6 +411,7 @@ namespace SystemMonitoring
                             DestIP = DestIP,
                             ProcessID = data.ProcessID,
                             CreateTime = DateTime.Now,
+                            IsBlacklisted = isBlacklisted,
                         };
 
                         IndexDataToElasticsearch(tcpipData, "tcpip");
