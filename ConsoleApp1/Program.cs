@@ -422,24 +422,59 @@ namespace SystemMonitoring
             }
         }
 
+        public class FileWatcherData
+        {
+            public string Type { get; set; }
+            public string Path { get; set; }
+            public DateTime CreateTime { get; set; }
+        }
+
         private void OnFileChanged(object sender, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileChanged] {e.FullPath}");
             //_ = CheckFileHash(e.FullPath);
+            var filewatcherdata = new FileWatcherData()
+            {
+                Type = "Change",
+                Path = e.FullPath,
+                CreateTime = DateTime.Now,
+            };
+            IndexDataToElasticsearch(filewatcherdata, "file_watcher");
         }
         private static void OnFileCreated(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileCreated] {e.FullPath}");
+            var filewatcherdata = new FileWatcherData()
+            {
+                Type = "Create",
+                Path = e.FullPath,
+                CreateTime = DateTime.Now,
+            };
+            IndexDataToElasticsearch(filewatcherdata, "file_watcher");
         }
 
         private static void OnFileDeleted(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"[FileDeleted] {e.FullPath}");
+            var filewatcherdata = new FileWatcherData()
+            {
+                Type = "Deleted",
+                Path = e.FullPath,
+                CreateTime = DateTime.Now,
+            };
+            IndexDataToElasticsearch(filewatcherdata, "file_watcher");
         }
 
         private static void OnFileRenamed(object source, RenamedEventArgs e)
         {
             Console.WriteLine($"[FileRenamed] from {e.OldFullPath} to {e.FullPath}");
+            var filewatcherdata = new FileWatcherData()
+            {
+                Type = "Renamed",
+                Path = e.FullPath,
+                CreateTime = DateTime.Now,
+            };
+            IndexDataToElasticsearch(filewatcherdata, "file_watcher");
 
         }
 
